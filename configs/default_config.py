@@ -98,22 +98,22 @@ class RoadGeometryConfig:
     min_line_length: int = 120
     max_line_gap: int = 40
     roi_top_y_ratio: float = 0.42
-    roi_top_width_ratio: float = 0.10
-    roi_bottom_width_ratio: float = 0.78
+    roi_top_width_ratio: float = 0.16
+    roi_bottom_width_ratio: float = 0.88
     line_top_offset_ratio: float = -0.02
-    bottom_left_min_ratio: float = 0.14
-    bottom_left_max_ratio: float = 0.30
-    bottom_right_min_ratio: float = 0.70
-    bottom_right_max_ratio: float = 0.86
-    top_width_scale: float = 1.28
-    top_width_min_ratio: float = 0.04
-    top_width_max_ratio: float = 0.20
+    bottom_left_min_ratio: float = 0.08
+    bottom_left_max_ratio: float = 0.34
+    bottom_right_min_ratio: float = 0.66
+    bottom_right_max_ratio: float = 0.92
+    top_width_scale: float = 1.55
+    top_width_min_ratio: float = 0.07
+    top_width_max_ratio: float = 0.28
     top_y_min_ratio: float = 0.42
     top_y_max_ratio: float = 0.52
-    bottom_expand_ratio: float = 0.12
-    top_expand_ratio: float = 0.28
-    outer_bottom_offset_ratio: float = 0.20
-    outer_top_offset_ratio: float = 0.08
+    bottom_expand_ratio: float = 0.18
+    top_expand_ratio: float = 0.42
+    outer_bottom_offset_ratio: float = 0.24
+    outer_top_offset_ratio: float = 0.14
     geometry_region_min_overlap: float = 0.03
     geometry_confidence_threshold: float = 0.45
     boundary_support_margin_x: int = 36
@@ -121,11 +121,11 @@ class RoadGeometryConfig:
     boundary_smoothing_window: int = 21
     geometry_extension_limit: int = 90
     min_top_width_ratio: float = 0.015
-    left_boundary_search_margin: int = 52
-    right_boundary_search_margin: int = 40
-    left_boundary_max_delta: int = 26
-    right_boundary_max_delta: int = 22
-    boundary_width_alpha: float = 0.92
+    left_boundary_search_margin: int = 64
+    right_boundary_search_margin: int = 56
+    left_boundary_max_delta: int = 34
+    right_boundary_max_delta: int = 30
+    boundary_width_alpha: float = 1.0
 
 
 @dataclass
