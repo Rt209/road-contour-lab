@@ -1,12 +1,11 @@
 #!/usr/bin/env python3
 """
-此檔案是道路輪廓擷取系統的命令列入口。
-使用者可透過 CLI 指定輸入影像、輸出資料夾與部分重要參數，
-再交由主流程類別執行完整的道路輪廓擷取。
+命令列入口點，負責載入設定並執行道路輪廓擷取流程。
 """
 
 import argparse
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from configs.default_config import get_default_config
@@ -86,23 +85,46 @@ Examples:
     return parser.parse_args()
 
 
+def _build_timestamp_label() -> str:
+    """建立可用於輸出命名的時間戳記。"""
+    return datetime.now().strftime("%Y%m%d-%H%M%S")
+
+
+def _ensure_unique_path(path: Path) -> Path:
+    """若目標已存在，自動附加流水號避免覆蓋。"""
+    if not path.exists():
+        return path
+
+    counter = 1
+    while True:
+        candidate = path.with_name(f"{path.stem}_{counter}{path.suffix}")
+        if not candidate.exists():
+            return candidate
+        counter += 1
+
+
 def build_default_output_path(input_path: Path, output_dir: Path) -> Path:
-    """依輸入檔名建立預設輸出檔名 `檔名-result.jpg`。"""
-    return output_dir / f"{input_path.stem}-result.jpg"
+    """建立不覆蓋既有結果圖的輸出路徑。"""
+    timestamp = _build_timestamp_label()
+    return _ensure_unique_path(output_dir / f"{input_path.stem}-result-{timestamp}.jpg")
+
+
+def build_intermediate_output_dir(input_path: Path, output_dir: Path) -> Path:
+    """為每次執行建立獨立的中間結果資料夾。"""
+    timestamp = _build_timestamp_label()
+    return _ensure_unique_path(output_dir / f"{input_path.stem}-run-{timestamp}")
 
 
 def main():
-    """命令列主入口。"""
+    """程式主入口。"""
     args = parse_arguments()
 
-    # 建立 logger，方便顯示流程進度與錯誤資訊。
     logger = setup_logger(__name__)
 
     logger.info("=" * 60)
     logger.info("Road Contour Extraction System - Method A")
     logger.info("=" * 60)
 
-    # 驗證輸入影像是否存在。
     input_path = Path(args.input)
     if not input_path.exists():
         logger.error(f"Input file not found: {args.input}")
@@ -111,10 +133,7 @@ def main():
     logger.info(f"Input image: {args.input}")
     logger.info(f"Output directory: {args.output_dir}")
     output_dir = Path(args.output_dir)
-    final_output_path = build_default_output_path(input_path, output_dir)
-    logger.info(f"Final output image: {final_output_path}")
 
-    # 載入預設設定，並套用命令列覆寫值。
     try:
         config = get_default_config()
 
@@ -137,7 +156,6 @@ def main():
         logger.error(f"Failed to load configuration: {e}")
         return 1
 
-    # 執行主流程並輸出結果。
     try:
         logger.info("\nStarting pipeline execution...")
 
@@ -147,16 +165,13 @@ def main():
         logger.info(f"\nExtracted {len(results['contours'])} contours")
 
         if args.save_intermediate:
-            logger.info("\nSaving intermediate results...")
-            pipeline.save_intermediate_results(str(args.output_dir))
+            run_output_dir = build_intermediate_output_dir(input_path, output_dir)
+            logger.info(f"Saving intermediate results to: {run_output_dir}")
+            pipeline.save_intermediate_results(str(run_output_dir))
+            final_output_path = run_output_dir / "21_contour_overlay.png"
         else:
-            # 預設只保留自動命名的最終結果圖，並清除舊的中間圖片。
             output_dir.mkdir(parents=True, exist_ok=True)
-            for file_path in output_dir.iterdir():
-                if file_path.name == ".gitkeep":
-                    continue
-                if file_path.is_file():
-                    file_path.unlink()
+            final_output_path = build_default_output_path(input_path, output_dir)
 
             from src.preprocessing.image_io import save_image
 
