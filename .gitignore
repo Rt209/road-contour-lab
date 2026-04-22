@@ -47,6 +47,9 @@ tests/
 data/input/*
 data/output/*
 !data/input/.gitkeep
+!data/input/*.jpg
+!data/input/*.jpeg
+!data/input/*.png
 !data/output/.gitkeep
 
 # Logs
