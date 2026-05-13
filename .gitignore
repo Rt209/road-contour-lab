@@ -45,7 +45,6 @@ tests/
 
 # Data and outputs
 data/input/*
-data/output/*
 !data/input/.gitkeep
 !data/input/*.jpg
 !data/input/*.jpeg

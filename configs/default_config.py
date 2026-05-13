@@ -129,6 +129,25 @@ class RoadGeometryConfig:
 
 
 @dataclass
+class CurveRoadConfig:
+    """Configuration for curve-aware road mask refinement."""
+
+    enabled: bool = True
+    min_row_coverage_ratio: float = 0.025
+    bottom_search_ratio: float = 0.28
+    center_bias_weight: float = 0.35
+    width_change_weight: float = 0.25
+    max_center_shift_ratio: float = 0.12
+    max_gap_rows: int = 18
+    smoothing_window: int = 31
+    width_alpha: float = 1.02
+    top_width_alpha: float = 0.92
+    min_width_ratio: float = 0.035
+    close_kernel_size: int = 9
+    close_iterations: int = 2
+
+
+@dataclass
 class ContourConfig:
     """輪廓擷取與繪製參數。"""
 
@@ -155,6 +174,7 @@ class OutputConfig:
 class RoadContourConfig:
     """整合所有子設定的主設定類別。"""
 
+    pipeline_version: str = "v1"
     preprocessing: PreprocessingConfig = None
     sobel: SobelConfig = None
     lbp: LBPConfig = None
@@ -164,6 +184,7 @@ class RoadContourConfig:
     bfs: BFSConfig = None
     connected_components: ConnectedComponentsConfig = None
     road_geometry: RoadGeometryConfig = None
+    curve_road: CurveRoadConfig = None
     contour: ContourConfig = None
     output: OutputConfig = None
 
@@ -191,6 +212,8 @@ class RoadContourConfig:
             self.connected_components = ConnectedComponentsConfig()
         if self.road_geometry is None:
             self.road_geometry = RoadGeometryConfig()
+        if self.curve_road is None:
+            self.curve_road = CurveRoadConfig()
         if self.contour is None:
             self.contour = ContourConfig()
         if self.output is None:

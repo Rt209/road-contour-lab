@@ -82,6 +82,13 @@ Examples:
         help="Minimum contour area",
     )
 
+    parser.add_argument(
+        "--pipeline",
+        choices=["v1", "v2"],
+        default="v1",
+        help="Pipeline version: v1 uses straight-road geometry, v2 uses curve-aware tracing",
+    )
+
     return parser.parse_args()
 
 
@@ -122,7 +129,7 @@ def main():
     logger = setup_logger(__name__)
 
     logger.info("=" * 60)
-    logger.info("Road Contour Extraction System - Method A")
+    logger.info(f"Road Contour Extraction System - Pipeline {args.pipeline.upper()}")
     logger.info("=" * 60)
 
     input_path = Path(args.input)
@@ -136,6 +143,7 @@ def main():
 
     try:
         config = get_default_config()
+        config.pipeline_version = args.pipeline
 
         if args.threshold_fusion is not None:
             config.feature_fusion.fusion_threshold = args.threshold_fusion

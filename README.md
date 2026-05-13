@@ -1,40 +1,59 @@
 # Road Contour Laboratory
 
-道路輪廓擷取實驗專案，使用 `Python + OpenCV` 實作傳統影像處理流程，從輸入道路影像中擷取候選道路區域並輸出最終 contour 疊圖。
+使用 Python 與 OpenCV 實作道路輪廓擷取實驗。專案目前保留兩條 pipeline：
 
-## 功能特色
-
-- Sobel 特徵擷取
-- LBP 特徵擷取
-- Feature Fusion
-- Candidate Mask
-- Distance Transform
-- BFS Region Growing
-- Connected Components Filtering
-- Contour Extraction
+- Pipeline V1：以傳統特徵融合、區域成長、連通元件篩選，再搭配直線道路幾何修正。
+- Pipeline V2：針對彎曲道路新增曲線邊界追蹤，並加入車道/路緣標線導引與失敗時的幾何 fallback。
 
 ## 專案結構
 
 ```text
 road-contour-lab/
 ├─ main.py
-├─ README.md
-├─ requirements.txt
-├─ config_example.py
 ├─ configs/
+│  └─ default_config.py
 ├─ data/
 │  ├─ input/
 │  └─ output/
 └─ src/
-   ├─ preprocessing/
-   ├─ features/
-   ├─ segmentation/
    ├─ contour/
+   ├─ features/
    ├─ pipeline/
+   ├─ preprocessing/
+   ├─ segmentation/
    └─ utils/
 ```
 
-## 處理流程
+## 使用方式
+
+安裝套件：
+
+```cmd
+python -m pip install --upgrade pip setuptools wheel
+python -m pip install -r requirements.txt
+```
+
+執行 Pipeline V1：
+
+```cmd
+python main.py --input data/input/1.jpg --output_dir data/output --pipeline v1 --min_area 1000
+```
+
+執行 Pipeline V2：
+
+```cmd
+python main.py --input data/input/1.jpg --output_dir data/output --pipeline v2 --min_area 1000
+```
+
+輸出中間結果：
+
+```cmd
+python main.py --input data/input/1.jpg --output_dir data/output --pipeline v2 --min_area 1000 --save_intermediate
+```
+
+## Pipeline V1 方法
+
+V1 是原始的直線道路流程，主要步驟如下：
 
 ```text
 Input Image
@@ -44,91 +63,83 @@ Input Image
   -> LBP Feature Extraction
   -> Feature Fusion
   -> Candidate Mask Thresholding
-  -> Morphology Cleanup
   -> Distance Transform
-  -> Seed Point Selection
   -> BFS Region Growing
   -> Connected Components Filtering
+  -> Hough Line Road Geometry Refinement
   -> Contour Extraction
-  -> Contour Overlay Output
 ```
 
-## 環境準備
+V1 適合直線道路或接近直線透視的道路。它會使用 Canny + HoughLinesP 找出左右道路線，再建立幾何遮罩修正道路區域。
 
-以下示範使用 **Windows CMD**。
+## Pipeline V2 方法
 
-### 1. 進入專案資料夾
+V2 針對彎曲道路新增以下策略：
 
-```cmd
-cd /d C:\Users\GIGABYTE\RoadContour\road-contour-lab
-```
+- 逐列追蹤道路左右邊界，不強制道路必須是兩條直線。
+- 使用曲線平滑重建道路 mask。
+- 偵測白色與黃色車道/路緣標線，當標線可信時用 marker-guided mask 輔助道路輪廓。
+- 若 marker-guided 結果貼近影像邊界、上緣過寬或形狀不可信，會拒絕該結果。
+- 若曲線追蹤信心不足，會 fallback 到 V1 的道路幾何修正，避免輸出貼邊大矩形或錯誤區塊。
 
-### 2. 建立虛擬環境
+相關實作：
 
-```cmd
-python -m venv .venv
-```
+- `src/segmentation/curve_road_geometry.py`
+- `src/pipeline/road_contour_pipeline.py`
+- `configs/default_config.py`
 
-### 3. 啟用虛擬環境
+## 結果輸出
 
-```cmd
-.venv\Scripts\activate.bat
-```
+目前 `data/output` 保留 Pipeline V1 與 Pipeline V2 的最終輪廓圖。
 
-### 4. 安裝相依套件
+### Pipeline V1
 
-```cmd
-python -m pip install --upgrade pip setuptools wheel
-python -m pip install -r requirements.txt
-```
+| Input | Output |
+| --- | --- |
+| `data/input/1.jpg` | ![V1 1](data/output/v1-1-contour.jpg) |
+| `data/input/2.jpg` | ![V1 2](data/output/v1-2-contour.jpg) |
+| `data/input/3.jpg` | ![V1 3](data/output/v1-3-contour.jpg) |
 
-## 執行方式
+### Pipeline V2
 
-將道路影像放入 `data/input/`，再執行下列指令：
-
-```cmd
-python main.py --input data/input/road.jpg --output_dir data/output
-```
-
-## 輸出說明
-
-執行完成後，`data/output/` 資料夾內只會有一張結果圖。
-
-輸出檔名會依輸入影像名稱自動產生，例如：
-
-```text
-data/output/road-result-時間戳記.jpg
-```
+| Input | Output |
+| --- | --- |
+| `data/input/1.jpg` | ![V2 1](data/output/v2-1-contour.jpg) |
+| `data/input/2.jpg` | ![V2 2](data/output/v2-2-contour.jpg) |
+| `data/input/3.jpg` | ![V2 3](data/output/v2-3-contour.jpg) |
 
 ## 參數設定
 
-預設參數位置：
+主要設定集中在：
 
 ```text
 configs/default_config.py
 ```
 
-可依需求調整的參數包含：
+常用參數包含：
 
-- blur kernel size
-- Sobel kernel size
-- LBP radius / n_points
-- fusion weights
-- candidate threshold
-- seed threshold
-- BFS connectivity
-- contour min area
+- `candidate_mask.threshold`
+- `contour.min_area`
+- `road_geometry.*`
+- `curve_road.*`
+- `pipeline_version`
 
-## Python 版本
+## 驗證指令
 
-建議使用：
+語法檢查：
 
-```text
-Python 3.11
+```cmd
+python -m compileall src main.py configs
 ```
 
-## 核心檔案
+重新產生目前結果：
 
-- `main.py`: 命令列入口
-- `src/pipeline/road_contour_pipeline.py`: 主流程
-- `configs/default_config.py`: 預設參數
+```cmd
+python main.py --input data/input/1.jpg --output_dir data/output --pipeline v1 --min_area 1000
+python main.py --input data/input/2.jpg --output_dir data/output --pipeline v1 --min_area 1000
+python main.py --input data/input/3.jpg --output_dir data/output --pipeline v1 --min_area 1000
+
+python main.py --input data/input/1.jpg --output_dir data/output --pipeline v2 --min_area 1000
+python main.py --input data/input/2.jpg --output_dir data/output --pipeline v2 --min_area 1000
+python main.py --input data/input/3.jpg --output_dir data/output --pipeline v2 --min_area 1000
+```

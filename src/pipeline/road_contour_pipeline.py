@@ -27,6 +27,10 @@ from src.segmentation.connected_components import (
     keep_largest_component,
     keep_road_like_component,
 )
+from src.segmentation.curve_road_geometry import (
+    refine_curve_road_mask,
+    refine_curve_road_mask_from_lane_markers,
+)
 from src.segmentation.distance_seed import (
     compute_distance_transform,
     select_seed_points,
@@ -200,8 +204,115 @@ class RoadContourPipeline:
         selected_region = final_region.copy()
         self.results["debug_11_connected_component_selected"] = selected_region
 
+        if self.config.pipeline_version == "v2" and self.config.curve_road.enabled:
+            self.logger.info("Step 8.5: Refining region with curve-aware road tracing...")
+            marker_result = refine_curve_road_mask_from_lane_markers(original)
+            curve_result = refine_curve_road_mask(
+                selected_region,
+                min_row_coverage_ratio=self.config.curve_road.min_row_coverage_ratio,
+                bottom_search_ratio=self.config.curve_road.bottom_search_ratio,
+                center_bias_weight=self.config.curve_road.center_bias_weight,
+                width_change_weight=self.config.curve_road.width_change_weight,
+                max_center_shift_ratio=self.config.curve_road.max_center_shift_ratio,
+                max_gap_rows=self.config.curve_road.max_gap_rows,
+                smoothing_window=self.config.curve_road.smoothing_window,
+                width_alpha=self.config.curve_road.width_alpha,
+                top_width_alpha=self.config.curve_road.top_width_alpha,
+                min_width_ratio=self.config.curve_road.min_width_ratio,
+                close_kernel_size=self.config.curve_road.close_kernel_size,
+                close_iterations=self.config.curve_road.close_iterations,
+            )
+
+            marker_area = int((marker_result["regularized_mask"] > 0).sum())
+            min_marker_area = int(original.shape[0] * original.shape[1] * 0.015)
+            marker_selected = False
+            if marker_result["confidence"] >= 0.35 and marker_area >= min_marker_area:
+                curve_result = marker_result
+                marker_selected = True
+                self.logger.info(
+                    "Lane-marker guided V2 mask selected with confidence %.4f and area %d",
+                    float(marker_result["confidence"]),
+                    marker_area,
+                )
+            else:
+                self.results["debug_12a_lane_marker_candidate"] = marker_result[
+                    "marker_mask"
+                ]
+
+            if not marker_selected:
+                geometry_result = detect_road_geometry_mask(
+                    gray,
+                    canny_threshold1=self.config.road_geometry.canny_threshold1,
+                    canny_threshold2=self.config.road_geometry.canny_threshold2,
+                    hough_threshold=self.config.road_geometry.hough_threshold,
+                    min_line_length=self.config.road_geometry.min_line_length,
+                    max_line_gap=self.config.road_geometry.max_line_gap,
+                    roi_top_y_ratio=self.config.road_geometry.roi_top_y_ratio,
+                    roi_top_width_ratio=self.config.road_geometry.roi_top_width_ratio,
+                    roi_bottom_width_ratio=self.config.road_geometry.roi_bottom_width_ratio,
+                    line_top_offset_ratio=self.config.road_geometry.line_top_offset_ratio,
+                    bottom_left_min_ratio=self.config.road_geometry.bottom_left_min_ratio,
+                    bottom_left_max_ratio=self.config.road_geometry.bottom_left_max_ratio,
+                    bottom_right_min_ratio=self.config.road_geometry.bottom_right_min_ratio,
+                    bottom_right_max_ratio=self.config.road_geometry.bottom_right_max_ratio,
+                    top_width_scale=self.config.road_geometry.top_width_scale,
+                    top_width_min_ratio=self.config.road_geometry.top_width_min_ratio,
+                    top_width_max_ratio=self.config.road_geometry.top_width_max_ratio,
+                    top_y_min_ratio=self.config.road_geometry.top_y_min_ratio,
+                    top_y_max_ratio=self.config.road_geometry.top_y_max_ratio,
+                    bottom_expand_ratio=self.config.road_geometry.bottom_expand_ratio,
+                    top_expand_ratio=self.config.road_geometry.top_expand_ratio,
+                    outer_bottom_offset_ratio=self.config.road_geometry.outer_bottom_offset_ratio,
+                    outer_top_offset_ratio=self.config.road_geometry.outer_top_offset_ratio,
+                )
+                if geometry_result["success"]:
+                    fallback_result = repair_region_with_geometry(
+                        selected_region,
+                        geometry_result,
+                        min_overlap=self.config.road_geometry.geometry_region_min_overlap,
+                        support_margin_x=self.config.road_geometry.boundary_support_margin_x,
+                        support_margin_y=self.config.road_geometry.boundary_support_margin_y,
+                        smoothing_window=self.config.road_geometry.boundary_smoothing_window,
+                        geometry_extension_limit=self.config.road_geometry.geometry_extension_limit,
+                        min_top_width_ratio=self.config.road_geometry.min_top_width_ratio,
+                        geometry_confidence_threshold=self.config.road_geometry.geometry_confidence_threshold,
+                        left_search_margin=self.config.road_geometry.left_boundary_search_margin,
+                        right_search_margin=self.config.road_geometry.right_boundary_search_margin,
+                        left_max_delta=self.config.road_geometry.left_boundary_max_delta,
+                        right_max_delta=self.config.road_geometry.right_boundary_max_delta,
+                        width_alpha=self.config.road_geometry.boundary_width_alpha,
+                    )
+                    if float(curve_result["confidence"]) < 0.65:
+                        curve_result["regularized_mask"] = fallback_result["regularized_mask"]
+                        curve_result["confidence"] = fallback_result["geometry_confidence"]
+                        self.logger.info(
+                            "V2 fallback used straight-road geometry with confidence %.4f",
+                            float(curve_result["confidence"]),
+                        )
+
+            final_region = curve_result["regularized_mask"]
+            self.results["curve_road_mask"] = curve_result["regularized_mask"]
+            self.results["curve_road_confidence"] = curve_result["confidence"]
+            if "marker_mask" in curve_result:
+                self.results["debug_12a_lane_marker_candidate"] = curve_result[
+                    "marker_mask"
+                ]
+            self.results["debug_12_curve_boundary_trace"] = (
+                curve_result["boundary_trace_visualization"]
+            )
+            self.results["debug_13_curve_width_profile"] = (
+                curve_result["width_curve_visualization"]
+            )
+            self.results["debug_14_curve_regularized_mask"] = (
+                curve_result["regularized_mask"]
+            )
+            self.logger.info(
+                "Curve-aware refinement applied with confidence %.4f",
+                float(curve_result["confidence"]),
+            )
+
         # Step 8.5: 利用道路幾何修正最後區域，避免只抓到零碎底部區塊。
-        if self.config.road_geometry.enabled:
+        elif self.config.road_geometry.enabled:
             self.logger.info("Step 8.5: Refining region with road geometry...")
             geometry_result = detect_road_geometry_mask(
                 gray,
@@ -360,6 +471,10 @@ class RoadContourPipeline:
             "debug_09_seed_points": "09_seed_points.png",
             "debug_10_bfs_region": "10_bfs_region.png",
             "debug_11_connected_component_selected": "11_connected_component_selected.png",
+            "debug_12a_lane_marker_candidate": "12a_lane_marker_candidate.png",
+            "debug_12_curve_boundary_trace": "12_curve_boundary_trace.png",
+            "debug_13_curve_width_profile": "13_curve_width_profile.png",
+            "debug_14_curve_regularized_mask": "14_curve_regularized_mask.png",
             "debug_12_clahe_geometry_input": "12_clahe_geometry_input.png",
             "debug_13_canny_edges_for_geometry": "13_canny_edges_for_geometry.png",
             "debug_14_hough_lines_raw": "14_hough_lines_raw.png",
